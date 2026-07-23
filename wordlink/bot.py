@@ -15,9 +15,10 @@ When no playable word remains it can tap Reshuffle to get a fresh board.
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional, Set, Tuple
 
 from .automation import DragTiming, WDAClient, pixels_to_points
 from .dictionary import load_trie
@@ -50,6 +51,9 @@ class BotConfig:
     # WDA screenshot compression: 0 = original PNG, 1 = medium JPEG (faster),
     # 2 = low JPEG (fastest). JPEG is plenty for OCR and change detection.
     screenshot_quality: Optional[int] = 1
+    # Directory to persist learned data across sessions. Writes accepted.txt (a
+    # growing map of Triumph's real dictionary) and rejected.txt (words to skip).
+    learn_dir: Optional[str] = None
 
 
 class WordLinkBot:
@@ -62,9 +66,49 @@ class WordLinkBot:
         # changes on each refill, but the dictionary does not, so rebuilding it
         # per word (as the first version did) was the main source of lag.
         self._solver: Optional[Solver] = None
-        # Words Triumph has rejected this session (its dictionary is fixed, so a
-        # reject is permanent). Never retried, on any board.
-        self._rejected_words: set = set()
+        # Words Triumph has rejected (its dictionary is fixed, so a reject is
+        # permanent). Never retried, on any board.
+        self._rejected_words: Set[str] = set()
+        # Words confirmed accepted — the empirically-learned Triumph dictionary.
+        self._accepted_words: Set[str] = set()
+        self._accept_path: Optional[str] = None
+        self._reject_path: Optional[str] = None
+        self._load_learned()
+
+    def _load_learned(self) -> None:
+        """Load previously learned accepted/rejected words from ``learn_dir``."""
+        if not self.config.learn_dir:
+            return
+        os.makedirs(self.config.learn_dir, exist_ok=True)
+        self._accept_path = os.path.join(self.config.learn_dir, "accepted.txt")
+        self._reject_path = os.path.join(self.config.learn_dir, "rejected.txt")
+        for path, target in ((self._accept_path, self._accepted_words),
+                             (self._reject_path, self._rejected_words)):
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as fh:
+                    for line in fh:
+                        w = line.strip().upper()
+                        if w:
+                            target.add(w)
+        print(
+            f"Loaded learned data: {len(self._accepted_words)} accepted, "
+            f"{len(self._rejected_words)} rejected (from {self.config.learn_dir})"
+        )
+
+    def _record_accept(self, word: str) -> None:
+        if word in self._accepted_words:
+            return
+        self._accepted_words.add(word)
+        if self._accept_path:
+            with open(self._accept_path, "a", encoding="utf-8") as fh:
+                fh.write(word + "\n")
+
+    def _record_reject(self, word: str) -> None:
+        newly = word not in self._rejected_words
+        self._rejected_words.add(word)
+        if newly and self._reject_path:
+            with open(self._reject_path, "a", encoding="utf-8") as fh:
+                fh.write(word + "\n")
 
     def _get_solver(self) -> Solver:
         if self._solver is None:
@@ -178,7 +222,7 @@ class WordLinkBot:
                 crop = self._region_crop(image, region)
                 if not self._regions_differ(prev_crop, crop, thresh):
                     rejected += 1
-                    rejected_words.add(sol.word)
+                    self._record_reject(sol.word)
                     if self.config.verbose:
                         print(f"  x {sol.word} (rejected)")
                     errors = 0
@@ -192,11 +236,12 @@ class WordLinkBot:
                 if new_board.grid != board.grid:
                     played += 1
                     board = new_board
+                    self._record_accept(sol.word)
                     print(f"[{played}] {sol.word} (+{sol.score})")
                 else:
                     # Pixels flickered but letters are unchanged: it was rejected.
                     rejected += 1
-                    rejected_words.add(sol.word)
+                    self._record_reject(sol.word)
                     if self.config.verbose:
                         print(f"  x {sol.word} (rejected)")
                 errors = 0

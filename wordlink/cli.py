@@ -123,6 +123,7 @@ def cmd_play(args) -> int:
         reshuffle_xy=reshuffle_xy,
         verbose=args.verbose,
         screenshot_quality=args.screenshot_quality,
+        learn_dir=args.learn_dir,
         timing=DragTiming(
             press_hold_ms=args.press_hold_ms,
             move_ms_per_tile=args.move_ms,
@@ -182,6 +183,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="WDA screenshot compression: 0=PNG (best/slowest), 1=JPEG, 2=low JPEG (fastest).")
     p_play.add_argument("--dry-run", action="store_true", help="Log gestures instead of sending them.")
     p_play.add_argument("--verbose", action="store_true", help="Also print rejected words.")
+    p_play.add_argument("--learn-dir", help="Persist learned accepted.txt / rejected.txt here to map Triumph's dictionary and skip known-bad words across runs.")
     p_play.set_defaults(func=cmd_play)
 
     return parser
