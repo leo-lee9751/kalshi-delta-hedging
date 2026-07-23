@@ -134,6 +134,34 @@ class WDAClient:
         arr = np.frombuffer(png_bytes, dtype=np.uint8)
         return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
+    def perform_tap(self, point: Point) -> None:
+        """Tap a single logical point (used for the Reshuffle button)."""
+        x, y = point
+        payload = {
+            "actions": [
+                {
+                    "type": "pointer",
+                    "id": "finger1",
+                    "parameters": {"pointerType": "touch"},
+                    "actions": [
+                        {"type": "pointerMove", "duration": 0, "x": int(x), "y": int(y)},
+                        {"type": "pointerDown", "button": 0},
+                        {"type": "pause", "duration": 60},
+                        {"type": "pointerUp", "button": 0},
+                    ],
+                }
+            ]
+        }
+        if self.dry_run:
+            print(f"[dry-run] tap: ({int(x)},{int(y)})")
+            return
+        sid = self.session_id()
+        resp = requests.post(
+            self._url(f"/session/{sid}/actions"), json=payload, timeout=self.timeout
+        )
+        resp.raise_for_status()
+        requests.delete(self._url(f"/session/{sid}/actions"), timeout=self.timeout)
+
     def perform_drag(self, points: Sequence[Point], timing: DragTiming) -> None:
         """Replay ``points`` as one continuous finger drag."""
         payload = build_pointer_actions(points, timing)
