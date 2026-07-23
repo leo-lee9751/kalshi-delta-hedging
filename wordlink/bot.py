@@ -46,6 +46,7 @@ class BotConfig:
     # Screen point to tap when out of words (the Reshuffle button). None = stop.
     reshuffle_xy: Optional[Tuple[float, float]] = None
     reshuffle_pause: float = 1.0
+    verbose: bool = False
 
 
 class WordLinkBot:
@@ -171,6 +172,8 @@ class WordLinkBot:
             if not self._regions_differ(prev_crop, crop, thresh):
                 rejected += 1
                 rejected_words.add(sol.word)
+                if self.config.verbose:
+                    print(f"  x {sol.word} (rejected)")
                 continue
 
             # Something changed — let the refill finish, then confirm via letters.
@@ -186,5 +189,7 @@ class WordLinkBot:
                 # Pixels flickered but letters are unchanged: it was rejected.
                 rejected += 1
                 rejected_words.add(sol.word)
+                if self.config.verbose:
+                    print(f"  x {sol.word} (rejected)")
 
         print(f"Done. accepted={played} rejected={rejected} reshuffles={reshuffles}")

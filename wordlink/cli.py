@@ -121,6 +121,7 @@ def cmd_play(args) -> int:
         settle_after_word=args.settle_ms / 1000.0,
         change_threshold=args.change_threshold,
         reshuffle_xy=reshuffle_xy,
+        verbose=args.verbose,
         timing=DragTiming(
             press_hold_ms=args.press_hold_ms,
             move_ms_per_tile=args.move_ms,
@@ -177,6 +178,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_play.add_argument("--tile-dwell-ms", type=int, default=35, help="Pause on each tile so it registers (raise if it misses tiles).")
     p_play.add_argument("--between-words-ms", type=int, default=40, help="Pause between words.")
     p_play.add_argument("--dry-run", action="store_true", help="Log gestures instead of sending them.")
+    p_play.add_argument("--verbose", action="store_true", help="Also print rejected words.")
     p_play.set_defaults(func=cmd_play)
 
     return parser
