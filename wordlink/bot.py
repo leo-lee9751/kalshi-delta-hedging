@@ -238,6 +238,10 @@ class WordLinkBot:
                     board = new_board
                     self._record_accept(sol.word)
                     print(f"[{played}] {sol.word} (+{sol.score})")
+                    # Brief gap after an accepted word so the game finishes
+                    # settling before the next drag starts.
+                    if self.config.timing.between_words_ms:
+                        time.sleep(self.config.timing.between_words_ms / 1000.0)
                 else:
                     # Pixels flickered but letters are unchanged: it was rejected.
                     rejected += 1
