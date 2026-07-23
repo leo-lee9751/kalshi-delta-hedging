@@ -10,9 +10,17 @@ import random
 from wordlink.automation import (
     DragTiming,
     build_pointer_actions,
+    jitter_point,
     jittered_ms,
     pixels_to_points,
 )
+
+
+def plain_timing(**kw):
+    """DragTiming with all motion humanization off (deterministic structure)."""
+    base = dict(curve=0.0, points_per_segment=1, overshoot_prob=0.0)
+    base.update(kw)
+    return DragTiming(**base)
 from wordlink.solver import Board, Solver, score_word, valid_path
 from wordlink.trie import Trie
 
@@ -154,7 +162,7 @@ def test_score_word_letter_values():
 # ---------------------------------------------------------------------------
 
 def test_build_pointer_actions_structure():
-    payload = build_pointer_actions([(10, 10), (20, 20), (30, 30)], DragTiming())
+    payload = build_pointer_actions([(10, 10), (20, 20), (30, 30)], plain_timing())
     seq = payload["actions"][0]["actions"]
     types = [a["type"] for a in seq]
     assert types[0] == "pointerMove"
@@ -203,7 +211,7 @@ def test_jittered_ms_never_negative():
 def test_jitter_makes_drag_durations_vary():
     # Same path, but per-tile move/dwell durations should differ once jitter is on.
     path = [(0, 0), (10, 10), (20, 20), (30, 30), (40, 40)]
-    timing = DragTiming(jitter=0.4)
+    timing = plain_timing(jitter=0.4)
     seq = build_pointer_actions(path, timing, rng=random.Random(42))["actions"][0]["actions"]
     move_durations = [a["duration"] for a in seq if a["type"] == "pointerMove" and a["duration"] > 0]
     assert len(set(move_durations)) > 1
@@ -211,15 +219,80 @@ def test_jitter_makes_drag_durations_vary():
 
 def test_zero_jitter_keeps_drag_uniform():
     path = [(0, 0), (10, 10), (20, 20), (30, 30)]
-    timing = DragTiming(jitter=0.0)
+    timing = plain_timing(jitter=0.0)
     seq = build_pointer_actions(path, timing)["actions"][0]["actions"]
     move_durations = [a["duration"] for a in seq if a["type"] == "pointerMove" and a["duration"] > 0]
     assert set(move_durations) == {timing.move_ms_per_tile}
 
 
 # ---------------------------------------------------------------------------
+# Motion humanization: curves, overshoot, positional jitter
+# ---------------------------------------------------------------------------
+
+def test_curve_adds_intermediate_points_off_the_straight_line():
+    path = [(0, 0), (100, 0)]
+    straight = build_pointer_actions(path, plain_timing(), rng=random.Random(1))
+    curved = build_pointer_actions(
+        path, DragTiming(curve=0.3, points_per_segment=6, overshoot_prob=0.0, jitter=0.0),
+        rng=random.Random(1),
+    )
+    n_straight = sum(1 for a in straight["actions"][0]["actions"] if a["type"] == "pointerMove")
+    curved_moves = [a for a in curved["actions"][0]["actions"] if a["type"] == "pointerMove"]
+    assert len(curved_moves) > n_straight
+    # A curved segment bows off the y=0 line at some sampled point.
+    assert any(a["y"] != 0 for a in curved_moves)
+
+
+def test_position_jitter_stays_inside_tile():
+    rng = random.Random(0)
+    for _ in range(200):
+        x, y = jitter_point((100.0, 100.0), 40.0, 40.0, 0.28, rng)
+        assert 100 - 0.28 * 20 <= x <= 100 + 0.28 * 20
+        assert 100 - 0.28 * 20 <= y <= 100 + 0.28 * 20
+
+
+def test_position_jitter_zero_is_center():
+    assert jitter_point((10.0, 20.0), 40.0, 40.0, 0.0, random.Random(0)) == (10.0, 20.0)
+
+
+def test_gaussian_jitter_within_bounds():
+    rng = random.Random(3)
+    vals = [jittered_ms(100, 0.4, rng, "gaussian") for _ in range(500)]
+    assert all(60 <= v <= 140 for v in vals)
+    assert len(set(vals)) > 1
+
+
+# ---------------------------------------------------------------------------
 # Integration with the bundled dictionary
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Behavioural humanization: weighted word choice
+# ---------------------------------------------------------------------------
+
+def _sol(word, score):
+    from wordlink.solver import Solution
+
+    return Solution(word=word, path=((0, 0), (0, 1)), score=score)
+
+
+def test_select_word_only_picks_from_top_n_and_varies():
+    from wordlink.bot import select_word
+
+    cands = [_sol("BEST", 20), _sol("GOOD", 15), _sol("OKAY", 12), _sol("MEH", 8), _sol("BAD", 5)]
+    rng = random.Random(1)
+    picks = {select_word(cands, rng, 3).word for _ in range(300)}
+    assert picks <= {"BEST", "GOOD", "OKAY"}  # never reaches the bottom two
+    assert len(picks) > 1  # not always the single best
+
+
+def test_select_word_strict_best_when_top_n_is_one():
+    from wordlink.bot import select_word
+
+    cands = [_sol("BEST", 20), _sol("GOOD", 15)]
+    rng = random.Random(2)
+    assert all(select_word(cands, rng, 1).word == "BEST" for _ in range(50))
+
 
 def test_bundled_dictionary_finds_real_words():
     from wordlink.dictionary import load_trie
