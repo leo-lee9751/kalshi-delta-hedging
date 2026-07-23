@@ -19,9 +19,10 @@ _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 # Full ENABLE1 lexicon (~172k words) — maximal coverage, but includes many
 # obscure words that games like Triumph's WordLink reject.
 FULL_DICTIONARY = os.path.join(_DATA_DIR, "enable1.txt")
-# Frequency-filtered subset (~45k of the most common ENABLE1 words). This is the
-# default for actually *playing*: far fewer attempted words get rejected, so the
-# bot wastes less time and clears more accepted words within the round timer.
+# Frequency-filtered subset (~18k of the most common everyday ENABLE1 words).
+# This is the default for actually *playing*: it drops the rare loanword /
+# Scrabble-dictionary tail (e.g. SPORTIF, BEAUX, ROCOCO) that games like
+# Triumph's WordLink reject, so far fewer attempts are wasted.
 COMMON_DICTIONARY = os.path.join(_DATA_DIR, "common.txt")
 BUNDLED_DICTIONARY = COMMON_DICTIONARY
 
