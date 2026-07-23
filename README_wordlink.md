@@ -109,10 +109,50 @@ pixels* while gestures use *logical points*; the bot computes the scale factor
 drag. Faster clears more words within the timer but risks mis-registered swipes.
 Start slow, then speed up until words stop registering, then back off.
 
-`--jitter` randomizes each keystroke's timing by +/- a fraction of its base
-value (default `0.4`, i.e. +/-40%), so no two tile moves take exactly the same
-time. Perfectly uniform timing is an obvious automation tell; jitter makes the
-swipe look more hand-drawn. Set `--jitter 0` to restore fixed timing.
+### Looking less like a bot (humanization)
+
+Perfectly uniform timing, dead-straight drags to exact pixel centres, always
+playing the single best word, and clearing every word at superhuman speed are
+all obvious automation tells. The `play` command applies a set of humanization
+behaviours by default (all under the `humanization` group in `--help`, and each
+can be turned off by setting it to `0`):
+
+**Motion** — the finger no longer moves like a machine:
+
+- `--position-jitter` (0.28) — aim at a random spot inside each tile, not the
+  exact centre.
+- `--curve` (0.12) + `--points-per-segment` (4) — bow each tile-to-tile segment
+  into a slight hand-drawn arc instead of a straight polygon edge.
+- `--overshoot-prob` (0.12) — occasionally slide just past a tile and correct.
+- `--false-start-prob` (0.05) — a tiny hesitation gesture before some words.
+
+**Timing** — delays vary the way a person's do:
+
+- `--jitter` (0.4) — randomize each hold/move/dwell by +/- this fraction.
+- `--distribution` (gaussian) — cluster durations near the base value with rare
+  outliers, rather than a flat `uniform` band.
+- `--think-prob` (0.12) — occasional longer "searching the board" pauses.
+- `--idle-prob` (0.03) — rare multi-second breaks.
+- `--fatigue-per-min` (0.1) — gradually slow down over a session.
+
+**Decisions & pace** — *what* and *how much* you play (the strongest signals):
+
+- `--max-wpm` (40) — cap accepted words per minute. **This is the single biggest
+  anti-detection lever**; finding every word at machine speed is the top tell.
+- `--max-words` — stop after roughly this many words per game (jittered +/-15%)
+  so you don't exhaustively clear the board or play identical-length games.
+- `--top-choice-n` (4) — play a weighted-random pick among the top N words, not
+  always the strict maximum, so the order isn't deterministically optimal.
+- `--skip-prob` (0.06) — randomly skip some findable words (humans miss plenty,
+  especially long/rare ones).
+
+Turn the whole lot off for maximum speed with, e.g., `--jitter 0 --curve 0
+--position-jitter 0 --overshoot-prob 0 --skip-prob 0 --top-choice-n 1 --max-wpm 0`.
+
+> None of this defeats server-side detection that relies on signals you can't
+> touch from here (device attestation, input-event provenance, aggregate
+> behavioural models). Treat it as making the *client-side* behaviour plausible,
+> and see the fair-use note above.
 
 ## Notes on the algorithm
 
