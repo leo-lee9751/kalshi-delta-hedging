@@ -117,7 +117,9 @@ def cmd_play(args) -> int:
         round_seconds=args.round_seconds,
         dictionary_path=args.dictionary,
         region=region,
+        quick_check=args.quick_check_ms / 1000.0,
         settle_after_word=args.settle_ms / 1000.0,
+        change_threshold=args.change_threshold,
         reshuffle_xy=reshuffle_xy,
         timing=DragTiming(
             press_hold_ms=args.press_hold_ms,
@@ -167,7 +169,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_play.add_argument("--rounds", type=int, default=1, help="Max board reshuffles (needs --reshuffle-xy).")
     p_play.add_argument("--round-seconds", type=float, default=None, help="Stop after N seconds (the game timer).")
     p_play.add_argument("--reshuffle-xy", help="Screen pixel 'x,y' of the Reshuffle button, tapped when out of words.")
-    p_play.add_argument("--settle-ms", type=int, default=350, help="Wait after each word for tiles to refill.")
+    p_play.add_argument("--quick-check-ms", type=int, default=130, help="Delay before checking if a word was accepted.")
+    p_play.add_argument("--settle-ms", type=int, default=350, help="Extra wait on an accepted word for tiles to refill.")
+    p_play.add_argument("--change-threshold", type=float, default=8.0, help="Pixel-change sensitivity for accept detection.")
     p_play.add_argument("--press-hold-ms", type=int, default=40, help="Finger press time before moving.")
     p_play.add_argument("--move-ms", type=int, default=50, help="Drag time per tile (lower = faster).")
     p_play.add_argument("--tile-dwell-ms", type=int, default=35, help="Pause on each tile so it registers (raise if it misses tiles).")

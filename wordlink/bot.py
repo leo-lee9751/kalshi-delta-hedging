@@ -35,8 +35,14 @@ class BotConfig:
     dictionary_path: Optional[str] = None
     region: Optional[GridRegion] = None
     timing: DragTiming = field(default_factory=DragTiming)
-    # Seconds to wait after a drag for the refill animation before re-reading.
-    settle_after_word: float = 0.45
+    # Short wait after a drag before the quick "did anything change?" check.
+    quick_check: float = 0.13
+    # Extra wait, only on an accepted word, for the refill animation to finish
+    # before we OCR the new board.
+    settle_after_word: float = 0.35
+    # Mean grayscale pixel delta of the grid crop above which we treat the board
+    # as possibly changed (and then confirm via OCR letters).
+    change_threshold: float = 8.0
     # Screen point to tap when out of words (the Reshuffle button). None = stop.
     reshuffle_xy: Optional[Tuple[float, float]] = None
     reshuffle_pause: float = 1.0
@@ -52,6 +58,9 @@ class WordLinkBot:
         # changes on each refill, but the dictionary does not, so rebuilding it
         # per word (as the first version did) was the main source of lag.
         self._solver: Optional[Solver] = None
+        # Words Triumph has rejected this session (its dictionary is fixed, so a
+        # reject is permanent). Never retried, on any board.
+        self._rejected_words: set = set()
 
     def _get_solver(self) -> Solver:
         if self._solver is None:
@@ -108,6 +117,7 @@ class WordLinkBot:
         """Play continuously until the timer expires (or ``rounds`` reshuffles)."""
         win_w, _ = self.client.window_size()
         solver = self._get_solver()
+        thresh = self.config.change_threshold
 
         image = self.client.screenshot()
         scale = image.shape[1] / win_w
@@ -124,16 +134,23 @@ class WordLinkBot:
         played = 0
         rejected = 0
         reshuffles = 0
-        # Words rejected on the *current* board; cleared whenever the board changes.
-        blacklist: set[str] = set()
+        # Words Triumph refused, remembered for the whole session so we never
+        # waste another attempt on them (a word it rejects once won't appear in
+        # its dictionary on any later board either).
+        rejected_words: set[str] = self._rejected_words
 
         while deadline is None or time.monotonic() < deadline:
-            solutions = [s for s in solver.solve(board) if s.word not in blacklist]
+            solutions = [s for s in solver.solve(board) if s.word not in rejected_words]
 
             if not solutions:
+                # Recovery: maybe the board changed and our copy is stale.
+                image = self.client.screenshot()
+                if self._regions_differ(prev_crop, self._region_crop(image, region), thresh):
+                    board = self._read_board(image, region)
+                    prev_crop = self._region_crop(image, region)
+                    continue
                 if reshuffles < rounds - 1 and self._reshuffle(scale):
                     reshuffles += 1
-                    blacklist.clear()
                     image = self.client.screenshot()
                     region = self._region_for(image)
                     board = self._read_board(image, region)
@@ -145,20 +162,29 @@ class WordLinkBot:
 
             sol = solutions[0]
             self._play_word(sol, region, scale)
-            time.sleep(self.config.settle_after_word)
 
-            # Fast accept/reject check: did the grid repaint?
+            # Quick check: rejected words don't animate, so if nothing changed
+            # after a short delay, move on immediately (no full settle wait).
+            time.sleep(self.config.quick_check)
             image = self.client.screenshot()
-            new_crop = self._region_crop(image, region)
+            crop = self._region_crop(image, region)
+            if not self._regions_differ(prev_crop, crop, thresh):
+                rejected += 1
+                rejected_words.add(sol.word)
+                continue
 
-            if self._regions_differ(prev_crop, new_crop):
+            # Something changed — let the refill finish, then confirm via letters.
+            time.sleep(self.config.settle_after_word)
+            image = self.client.screenshot()
+            new_board = self._read_board(image, region)
+            prev_crop = self._region_crop(image, region)
+            if new_board.grid != board.grid:
                 played += 1
-                blacklist.clear()
-                board = self._read_board(image, region)  # OCR only when it changed
-                prev_crop = new_crop
+                board = new_board
                 print(f"[{played}] {sol.word} (+{sol.score})")
             else:
+                # Pixels flickered but letters are unchanged: it was rejected.
                 rejected += 1
-                blacklist.add(sol.word)
+                rejected_words.add(sol.word)
 
         print(f"Done. accepted={played} rejected={rejected} reshuffles={reshuffles}")
