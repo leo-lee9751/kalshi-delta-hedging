@@ -22,9 +22,8 @@ from typing import List, Optional, Tuple
 from .automation import DragTiming, WDAClient, pixels_to_points
 from .dictionary import load_trie
 from .solver import Board, Solution, Solver
+from .trie import Trie
 from .vision import GridRegion, detect_grid_region, read_board
-
-Grid = Tuple[Tuple[str, ...], ...]
 
 
 @dataclass
@@ -43,25 +42,45 @@ class BotConfig:
     reshuffle_pause: float = 1.0
 
 
-def _grid_key(board: Board) -> Grid:
-    return tuple(tuple(row) for row in board.grid)
-
-
 class WordLinkBot:
     """Plays WordLink on a connected device, re-scanning after every word."""
 
     def __init__(self, config: BotConfig, client: Optional[WDAClient] = None) -> None:
         self.config = config
         self.client = client or WDAClient()
+        # Build the dictionary/trie ONCE and reuse it for every board. The board
+        # changes on each refill, but the dictionary does not, so rebuilding it
+        # per word (as the first version did) was the main source of lag.
+        self._solver: Optional[Solver] = None
 
-    def _build_solver(self, board: Board) -> Solver:
-        trie = load_trie(
-            self.config.dictionary_path,
-            min_length=self.config.min_length,
-            max_length=board.rows * board.cols,
-            allowed_letters=board.distinct_letters,
-        )
-        return Solver(trie, min_length=self.config.min_length)
+    def _get_solver(self) -> Solver:
+        if self._solver is None:
+            trie: Trie = load_trie(
+                self.config.dictionary_path,
+                min_length=self.config.min_length,
+            )
+            self._solver = Solver(trie, min_length=self.config.min_length)
+        return self._solver
+
+    @staticmethod
+    def _region_crop(image, region: GridRegion):
+        return image[
+            region.top : region.top + region.height,
+            region.left : region.left + region.width,
+        ]
+
+    @staticmethod
+    def _regions_differ(a, b, threshold: float = 6.0) -> bool:
+        """Cheap board-change test: mean pixel difference of the grid crop.
+
+        Accepted words repaint the grid (new letters), rejected words leave it
+        unchanged, so this distinguishes the two without re-running OCR.
+        """
+        import cv2
+
+        if a.shape != b.shape:
+            return True
+        return float(cv2.absdiff(a, b).mean()) > threshold
 
     def _region_for(self, image) -> GridRegion:
         return self.config.region or detect_grid_region(
@@ -88,11 +107,13 @@ class WordLinkBot:
     def run(self, rounds: int = 1) -> None:
         """Play continuously until the timer expires (or ``rounds`` reshuffles)."""
         win_w, _ = self.client.window_size()
+        solver = self._get_solver()
 
         image = self.client.screenshot()
         scale = image.shape[1] / win_w
         region = self._region_for(image)
         board = self._read_board(image, region)
+        prev_crop = self._region_crop(image, region)
         print(f"Start board:\n{board}\nscale={scale:.3f}")
 
         deadline = (
@@ -103,10 +124,10 @@ class WordLinkBot:
         played = 0
         rejected = 0
         reshuffles = 0
+        # Words rejected on the *current* board; cleared whenever the board changes.
         blacklist: set[str] = set()
 
         while deadline is None or time.monotonic() < deadline:
-            solver = self._build_solver(board)
             solutions = [s for s in solver.solve(board) if s.word not in blacklist]
 
             if not solutions:
@@ -116,6 +137,7 @@ class WordLinkBot:
                     image = self.client.screenshot()
                     region = self._region_for(image)
                     board = self._read_board(image, region)
+                    prev_crop = self._region_crop(image, region)
                     print(f"Reshuffled ({reshuffles}). New board:\n{board}")
                     continue
                 print("No playable words left; stopping.")
@@ -125,19 +147,18 @@ class WordLinkBot:
             self._play_word(sol, region, scale)
             time.sleep(self.config.settle_after_word)
 
-            # Re-read to see whether the word was accepted (board changed).
+            # Fast accept/reject check: did the grid repaint?
             image = self.client.screenshot()
-            new_board = self._read_board(image, region)
+            new_crop = self._region_crop(image, region)
 
-            if _grid_key(new_board) != _grid_key(board):
+            if self._regions_differ(prev_crop, new_crop):
                 played += 1
                 blacklist.clear()
-                board = new_board
-                print(f"[{played}] played {sol.word} (score {sol.score})")
+                board = self._read_board(image, region)  # OCR only when it changed
+                prev_crop = new_crop
+                print(f"[{played}] {sol.word} (+{sol.score})")
             else:
                 rejected += 1
                 blacklist.add(sol.word)
 
-        print(
-            f"Done. accepted={played} rejected={rejected} reshuffles={reshuffles}"
-        )
+        print(f"Done. accepted={played} rejected={rejected} reshuffles={reshuffles}")
