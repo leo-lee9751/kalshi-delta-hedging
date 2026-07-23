@@ -124,12 +124,25 @@ def cmd_play(args) -> int:
         verbose=args.verbose,
         screenshot_quality=args.screenshot_quality,
         learn_dir=args.learn_dir,
+        top_choice_n=args.top_choice_n,
+        skip_prob=args.skip_prob,
+        max_words_per_minute=(None if args.max_wpm <= 0 else args.max_wpm),
+        max_words=args.max_words,
+        think_prob=args.think_prob,
+        idle_prob=args.idle_prob,
+        fatigue_per_min=args.fatigue_per_min,
+        false_start_prob=args.false_start_prob,
         timing=DragTiming(
             press_hold_ms=args.press_hold_ms,
             move_ms_per_tile=args.move_ms,
             tile_dwell_ms=args.tile_dwell_ms,
             between_words_ms=args.between_words_ms,
             jitter=args.jitter,
+            distribution=args.distribution,
+            curve=args.curve,
+            points_per_segment=args.points_per_segment,
+            overshoot_prob=args.overshoot_prob,
+            position_jitter=args.position_jitter,
         ),
     )
     client = WDAClient(base_url=args.wda, dry_run=args.dry_run)
@@ -180,9 +193,46 @@ def build_parser() -> argparse.ArgumentParser:
     p_play.add_argument("--move-ms", type=int, default=65, help="Drag time per tile (lower = faster).")
     p_play.add_argument("--tile-dwell-ms", type=int, default=50, help="Pause on each tile so it registers (raise if it misses tiles).")
     p_play.add_argument("--between-words-ms", type=int, default=20, help="Pause between words.")
-    p_play.add_argument("--jitter", type=float, default=0.4,
-                        help="Randomize each keystroke's timing by +/- this fraction "
-                             "(0.4 = +/-40%%) so swipes aren't uniform. 0 disables.")
+
+    human = p_play.add_argument_group(
+        "humanization",
+        "Make the bot look less like a bot. Set any knob to 0 to disable it.",
+    )
+    human.add_argument("--jitter", type=float, default=0.4,
+                       help="Randomize each keystroke's timing by +/- this fraction "
+                            "(0.4 = +/-40%%) so swipes aren't uniform.")
+    human.add_argument("--distribution", choices=["gaussian", "uniform"], default="gaussian",
+                       help="Timing jitter shape: gaussian clusters near the base value "
+                            "with rare outliers (more human); uniform is a flat band.")
+    human.add_argument("--curve", type=float, default=0.12,
+                       help="Bow each swipe segment sideways by up to this fraction of its "
+                            "length so the trace is a hand-drawn arc, not a straight line.")
+    human.add_argument("--points-per-segment", type=int, default=4,
+                       help="Intermediate points sampled along each curved segment.")
+    human.add_argument("--overshoot-prob", type=float, default=0.12,
+                       help="Chance to slide just past a tile and correct back.")
+    human.add_argument("--position-jitter", type=float, default=0.28,
+                       help="Aim at a random spot within this fraction of each tile "
+                            "instead of the exact centre.")
+    human.add_argument("--top-choice-n", type=int, default=4,
+                       help="Choose randomly among the top N words (weighted by score) "
+                            "instead of always the single best. 1 = strict best.")
+    human.add_argument("--skip-prob", type=float, default=0.06,
+                       help="Per-word chance to skip a findable word (humans miss words).")
+    human.add_argument("--max-wpm", type=float, default=40.0,
+                       help="Cap accepted words per minute (0 = unlimited). The biggest "
+                            "anti-detection lever: superhuman speed is the top tell.")
+    human.add_argument("--max-words", type=int, default=None,
+                       help="Stop after ~this many words per game (jittered +/-15%%). "
+                            "Omit to play until the timer/words run out.")
+    human.add_argument("--think-prob", type=float, default=0.12,
+                       help="Chance of a longer 'thinking' pause between words.")
+    human.add_argument("--idle-prob", type=float, default=0.03,
+                       help="Chance of a rare multi-second idle break between words.")
+    human.add_argument("--fatigue-per-min", type=float, default=0.1,
+                       help="Gradually slow down: delays grow by this fraction per minute.")
+    human.add_argument("--false-start-prob", type=float, default=0.05,
+                       help="Chance of a small hesitation gesture before a word.")
     p_play.add_argument("--screenshot-quality", type=int, default=1, choices=[0, 1, 2],
                         help="WDA screenshot compression: 0=PNG (best/slowest), 1=JPEG, 2=low JPEG (fastest).")
     p_play.add_argument("--dry-run", action="store_true", help="Log gestures instead of sending them.")
