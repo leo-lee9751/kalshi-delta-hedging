@@ -105,14 +105,20 @@ def cmd_play(args) -> int:
 
         region = GridRegion(left, top, width, height, args.rows, args.cols)
 
+    reshuffle_xy = None
+    if args.reshuffle_xy:
+        rx, ry = (float(v) for v in args.reshuffle_xy.split(","))
+        reshuffle_xy = (rx, ry)
+
     config = BotConfig(
         rows=args.rows,
         cols=args.cols,
         min_length=args.min_length,
-        max_words_per_round=args.max_words,
         round_seconds=args.round_seconds,
         dictionary_path=args.dictionary,
         region=region,
+        settle_after_word=args.settle_ms / 1000.0,
+        reshuffle_xy=reshuffle_xy,
         timing=DragTiming(
             press_hold_ms=args.press_hold_ms,
             move_ms_per_tile=args.move_ms,
@@ -131,7 +137,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Solve and auto-play WordLink-style letter grids.",
     )
     parser.add_argument(
-        "--dictionary", help="Path to a custom word list (default: bundled ENABLE1)."
+        "--dictionary",
+        help="Path to a custom word list. Default is the bundled common-word list "
+        "(~45k words) for high acceptance; pass the full ENABLE1 list or your own "
+        "for maximum coverage.",
     )
     parser.add_argument(
         "--min-length", type=int, default=3, help="Minimum word length (default 3)."
@@ -154,12 +163,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_play.add_argument("--rows", type=int, default=4)
     p_play.add_argument("--cols", type=int, default=4)
     p_play.add_argument("--region", help="Grid pixel box 'left,top,width,height'. Omit to auto-detect.")
-    p_play.add_argument("--rounds", type=int, default=1)
-    p_play.add_argument("--max-words", type=int, default=None, help="Cap words per round.")
-    p_play.add_argument("--round-seconds", type=float, default=None, help="Stop a round after N seconds.")
-    p_play.add_argument("--press-hold-ms", type=int, default=40)
-    p_play.add_argument("--move-ms", type=int, default=55)
-    p_play.add_argument("--between-words-ms", type=int, default=120)
+    p_play.add_argument("--rounds", type=int, default=1, help="Max board reshuffles (needs --reshuffle-xy).")
+    p_play.add_argument("--round-seconds", type=float, default=None, help="Stop after N seconds (the game timer).")
+    p_play.add_argument("--reshuffle-xy", help="Screen pixel 'x,y' of the Reshuffle button, tapped when out of words.")
+    p_play.add_argument("--settle-ms", type=int, default=450, help="Wait after each word for tiles to refill.")
+    p_play.add_argument("--press-hold-ms", type=int, default=25, help="Finger press time before moving.")
+    p_play.add_argument("--move-ms", type=int, default=35, help="Drag time per tile (lower = faster).")
+    p_play.add_argument("--between-words-ms", type=int, default=60, help="Pause between words.")
     p_play.add_argument("--dry-run", action="store_true", help="Log gestures instead of sending them.")
     p_play.set_defaults(func=cmd_play)
 
