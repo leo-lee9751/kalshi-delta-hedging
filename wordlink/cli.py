@@ -129,6 +129,7 @@ def cmd_play(args) -> int:
             move_ms_per_tile=args.move_ms,
             tile_dwell_ms=args.tile_dwell_ms,
             between_words_ms=args.between_words_ms,
+            jitter=args.jitter,
         ),
     )
     client = WDAClient(base_url=args.wda, dry_run=args.dry_run)
@@ -179,6 +180,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_play.add_argument("--move-ms", type=int, default=65, help="Drag time per tile (lower = faster).")
     p_play.add_argument("--tile-dwell-ms", type=int, default=50, help="Pause on each tile so it registers (raise if it misses tiles).")
     p_play.add_argument("--between-words-ms", type=int, default=20, help="Pause between words.")
+    p_play.add_argument("--jitter", type=float, default=0.4,
+                        help="Randomize each keystroke's timing by +/- this fraction "
+                             "(0.4 = +/-40%%) so swipes aren't uniform. 0 disables.")
     p_play.add_argument("--screenshot-quality", type=int, default=1, choices=[0, 1, 2],
                         help="WDA screenshot compression: 0=PNG (best/slowest), 1=JPEG, 2=low JPEG (fastest).")
     p_play.add_argument("--dry-run", action="store_true", help="Log gestures instead of sending them.")

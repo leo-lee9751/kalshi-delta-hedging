@@ -16,11 +16,12 @@ When no playable word remains it can tap Reshuffle to get a fresh board.
 from __future__ import annotations
 
 import os
+import random
 import time
 from dataclasses import dataclass, field
 from typing import List, Optional, Set, Tuple
 
-from .automation import DragTiming, WDAClient, pixels_to_points
+from .automation import DragTiming, WDAClient, jittered_ms, pixels_to_points
 from .dictionary import load_trie
 from .solver import Board, Solution, Solver
 from .trie import Trie
@@ -62,6 +63,8 @@ class WordLinkBot:
     def __init__(self, config: BotConfig, client: Optional[WDAClient] = None) -> None:
         self.config = config
         self.client = client or WDAClient()
+        # RNG for timing jitter (between-word gaps here; drags jitter internally).
+        self._rng = random.Random()
         # Build the dictionary/trie ONCE and reuse it for every board. The board
         # changes on each refill, but the dictionary does not, so rebuilding it
         # per word (as the first version did) was the main source of lag.
@@ -238,10 +241,15 @@ class WordLinkBot:
                     board = new_board
                     self._record_accept(sol.word)
                     print(f"[{played}] {sol.word} (+{sol.score})")
-                    # Brief gap after an accepted word so the game finishes
-                    # settling before the next drag starts.
+                    # Brief (jittered) gap after an accepted word so the game
+                    # finishes settling before the next drag starts.
                     if self.config.timing.between_words_ms:
-                        time.sleep(self.config.timing.between_words_ms / 1000.0)
+                        gap = jittered_ms(
+                            self.config.timing.between_words_ms,
+                            self.config.timing.jitter,
+                            self._rng,
+                        )
+                        time.sleep(gap / 1000.0)
                 else:
                     # Pixels flickered but letters are unchanged: it was rejected.
                     rejected += 1

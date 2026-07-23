@@ -5,7 +5,14 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from wordlink.automation import DragTiming, build_pointer_actions, pixels_to_points
+import random
+
+from wordlink.automation import (
+    DragTiming,
+    build_pointer_actions,
+    jittered_ms,
+    pixels_to_points,
+)
 from wordlink.solver import Board, Solver, score_word, valid_path
 from wordlink.trie import Trie
 
@@ -167,6 +174,47 @@ def test_build_pointer_actions_requires_two_points():
 
 def test_pixels_to_points_scale():
     assert pixels_to_points((300, 600), scale=3.0) == (100.0, 200.0)
+
+
+# ---------------------------------------------------------------------------
+# Timing jitter
+# ---------------------------------------------------------------------------
+
+def test_jittered_ms_zero_jitter_is_identity():
+    rng = random.Random(0)
+    for v in (0, 10, 55, 120):
+        assert jittered_ms(v, 0.0, rng) == v
+
+
+def test_jittered_ms_stays_within_bounds():
+    rng = random.Random(1234)
+    base, jitter = 100, 0.4
+    values = [jittered_ms(base, jitter, rng) for _ in range(500)]
+    assert all(60 <= v <= 140 for v in values)  # 100 +/- 40%
+    # With this many samples the jitter should actually vary the value.
+    assert len(set(values)) > 1
+
+
+def test_jittered_ms_never_negative():
+    rng = random.Random(7)
+    assert all(jittered_ms(2, 5.0, rng) >= 0 for _ in range(100))
+
+
+def test_jitter_makes_drag_durations_vary():
+    # Same path, but per-tile move/dwell durations should differ once jitter is on.
+    path = [(0, 0), (10, 10), (20, 20), (30, 30), (40, 40)]
+    timing = DragTiming(jitter=0.4)
+    seq = build_pointer_actions(path, timing, rng=random.Random(42))["actions"][0]["actions"]
+    move_durations = [a["duration"] for a in seq if a["type"] == "pointerMove" and a["duration"] > 0]
+    assert len(set(move_durations)) > 1
+
+
+def test_zero_jitter_keeps_drag_uniform():
+    path = [(0, 0), (10, 10), (20, 20), (30, 30)]
+    timing = DragTiming(jitter=0.0)
+    seq = build_pointer_actions(path, timing)["actions"][0]["actions"]
+    move_durations = [a["duration"] for a in seq if a["type"] == "pointerMove" and a["duration"] > 0]
+    assert set(move_durations) == {timing.move_ms_per_tile}
 
 
 # ---------------------------------------------------------------------------

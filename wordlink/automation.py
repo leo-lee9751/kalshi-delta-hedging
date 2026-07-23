@@ -18,6 +18,7 @@ sending them, so the whole pipeline can be exercised without a device.
 from __future__ import annotations
 
 import base64
+import random
 import time
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
@@ -25,6 +26,10 @@ from typing import List, Optional, Sequence, Tuple
 import requests
 
 Point = Tuple[float, float]
+
+# Shared RNG for timing jitter. A module-level default keeps call sites simple;
+# tests pass their own seeded ``random.Random`` for deterministic output.
+_DEFAULT_RNG = random.Random()
 
 
 @dataclass
@@ -34,6 +39,11 @@ class DragTiming:
     Slower is more reliable; faster clears more words within the round timer.
     ``tile_dwell_ms`` is the important one for accuracy: pausing on each tile
     guarantees the game registers it instead of skipping a fast fly-over.
+
+    ``jitter`` randomizes each per-tile duration by +/- that fraction so the
+    swipe isn't perfectly uniform (a dead giveaway of automation). For example
+    ``jitter=0.4`` makes every move/dwell vary within +/-40% of its base value;
+    ``jitter=0.0`` restores the old fixed timing.
     """
 
     press_hold_ms: int = 40
@@ -41,32 +51,57 @@ class DragTiming:
     tile_dwell_ms: int = 35
     settle_ms: int = 40
     between_words_ms: int = 120
+    jitter: float = 0.4
 
 
-def build_pointer_actions(points: Sequence[Point], timing: DragTiming) -> dict:
+def jittered_ms(value: int, jitter: float, rng: random.Random) -> int:
+    """Randomize ``value`` by +/- ``jitter`` (a fraction), clamped at >= 0.
+
+    With ``jitter <= 0`` (or a non-positive base) the value is returned
+    unchanged, so timings stay uniform when jitter is disabled.
+    """
+    if value <= 0 or jitter <= 0:
+        return int(value)
+    low = value * (1.0 - jitter)
+    high = value * (1.0 + jitter)
+    return max(0, int(round(rng.uniform(low, high))))
+
+
+def build_pointer_actions(
+    points: Sequence[Point],
+    timing: DragTiming,
+    rng: Optional[random.Random] = None,
+) -> dict:
     """Construct the W3C ``/actions`` payload for a continuous drag.
 
     The finger presses down on the first tile, moves through each subsequent
     tile, then lifts. This is what makes the game register a single word rather
-    than a series of taps.
+    than a series of taps. When ``timing.jitter`` is set each hold/move/dwell
+    duration is randomized (via ``rng``, default the module RNG) so no two
+    keystrokes take exactly the same time.
     """
     if len(points) < 2:
         raise ValueError("A word path needs at least two tiles to drag between")
+
+    rng = rng or _DEFAULT_RNG
+
+    def j(value: int) -> int:
+        return jittered_ms(value, timing.jitter, rng)
 
     x0, y0 = points[0]
     actions: List[dict] = [
         {"type": "pointerMove", "duration": 0, "x": int(x0), "y": int(y0)},
         {"type": "pointerDown", "button": 0},
-        {"type": "pause", "duration": timing.press_hold_ms},
+        {"type": "pause", "duration": j(timing.press_hold_ms)},
     ]
     for x, y in points[1:]:
         actions.append(
-            {"type": "pointerMove", "duration": timing.move_ms_per_tile, "x": int(x), "y": int(y)}
+            {"type": "pointerMove", "duration": j(timing.move_ms_per_tile), "x": int(x), "y": int(y)}
         )
         # Dwell on each tile so the game registers it before moving on.
         if timing.tile_dwell_ms:
-            actions.append({"type": "pause", "duration": timing.tile_dwell_ms})
-    actions.append({"type": "pause", "duration": timing.settle_ms})
+            actions.append({"type": "pause", "duration": j(timing.tile_dwell_ms)})
+    actions.append({"type": "pause", "duration": j(timing.settle_ms)})
     actions.append({"type": "pointerUp", "button": 0})
 
     return {

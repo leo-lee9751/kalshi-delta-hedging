@@ -109,6 +109,11 @@ pixels* while gestures use *logical points*; the bot computes the scale factor
 drag. Faster clears more words within the timer but risks mis-registered swipes.
 Start slow, then speed up until words stop registering, then back off.
 
+`--jitter` randomizes each keystroke's timing by +/- a fraction of its base
+value (default `0.4`, i.e. +/-40%), so no two tile moves take exactly the same
+time. Perfectly uniform timing is an obvious automation tell; jitter makes the
+swipe look more hand-drawn. Set `--jitter 0` to restore fixed timing.
+
 ## Notes on the algorithm
 
 - **Search.** Depth-first from every tile, pruned by a trie: a partial path is
