@@ -122,6 +122,7 @@ def cmd_play(args) -> int:
         timing=DragTiming(
             press_hold_ms=args.press_hold_ms,
             move_ms_per_tile=args.move_ms,
+            tile_dwell_ms=args.tile_dwell_ms,
             between_words_ms=args.between_words_ms,
         ),
     )
@@ -169,6 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_play.add_argument("--settle-ms", type=int, default=350, help="Wait after each word for tiles to refill.")
     p_play.add_argument("--press-hold-ms", type=int, default=40, help="Finger press time before moving.")
     p_play.add_argument("--move-ms", type=int, default=50, help="Drag time per tile (lower = faster).")
+    p_play.add_argument("--tile-dwell-ms", type=int, default=35, help="Pause on each tile so it registers (raise if it misses tiles).")
     p_play.add_argument("--between-words-ms", type=int, default=40, help="Pause between words.")
     p_play.add_argument("--dry-run", action="store_true", help="Log gestures instead of sending them.")
     p_play.set_defaults(func=cmd_play)

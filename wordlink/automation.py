@@ -32,10 +32,13 @@ class DragTiming:
     """Timing knobs (milliseconds) for how a word is dragged.
 
     Slower is more reliable; faster clears more words within the round timer.
+    ``tile_dwell_ms`` is the important one for accuracy: pausing on each tile
+    guarantees the game registers it instead of skipping a fast fly-over.
     """
 
     press_hold_ms: int = 40
     move_ms_per_tile: int = 55
+    tile_dwell_ms: int = 35
     settle_ms: int = 40
     between_words_ms: int = 120
 
@@ -60,6 +63,9 @@ def build_pointer_actions(points: Sequence[Point], timing: DragTiming) -> dict:
         actions.append(
             {"type": "pointerMove", "duration": timing.move_ms_per_tile, "x": int(x), "y": int(y)}
         )
+        # Dwell on each tile so the game registers it before moving on.
+        if timing.tile_dwell_ms:
+            actions.append({"type": "pause", "duration": timing.tile_dwell_ms})
     actions.append({"type": "pause", "duration": timing.settle_ms})
     actions.append({"type": "pointerUp", "button": 0})
 
