@@ -121,6 +121,42 @@ def read_board(image, region: GridRegion, *, tesseract_config: str = "--psm 10")
     return Board(grid)
 
 
+def save_image(path: str, image) -> None:
+    """Write a numpy image to disk (thin wrapper so cv2 stays lazily imported)."""
+    cv2 = _require("cv2", "opencv-python")
+    cv2.imwrite(path, image)
+
+
+def annotate_board(image, region: GridRegion, board: Optional[Board] = None):
+    """Return a copy of ``image`` with the grid region + cells (and OCR'd
+    letters, if a ``board`` is given) drawn on top, for visual calibration.
+
+    Green rectangle = the region you passed; blue rectangles = each cell box;
+    red letters = what the OCR read there. If the blue boxes don't sit on the
+    tiles, adjust ``--region`` / ``--rows`` / ``--cols`` and try again.
+    """
+    cv2 = _require("cv2", "opencv-python")
+    out = image.copy()
+    cv2.rectangle(
+        out,
+        (region.left, region.top),
+        (region.left + region.width, region.top + region.height),
+        (0, 255, 0),
+        3,
+    )
+    for r in range(region.rows):
+        for c in range(region.cols):
+            x0, y0, x1, y1 = region.cell_box(r, c, inset=0.0)
+            cv2.rectangle(out, (x0, y0), (x1, y1), (255, 0, 0), 2)
+            if board is not None:
+                ch = board.grid[r][c]
+                cv2.putText(
+                    out, ch, (x0 + 6, y0 + 34),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 0, 255), 3,
+                )
+    return out
+
+
 def detect_grid_region(image, rows: int, cols: int) -> GridRegion:
     """Best-effort automatic detection of the square grid region.
 

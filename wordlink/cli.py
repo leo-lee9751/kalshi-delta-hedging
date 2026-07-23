@@ -97,6 +97,69 @@ def cmd_demo(args) -> int:
     return 0
 
 
+def cmd_calibrate(args) -> int:
+    """Screenshot the device and preview how the board will be read.
+
+    Handles a new device/screen size: it computes the pixel<->point scale for
+    you, reads the board from the given (or auto-detected) region, saves an
+    annotated overlay so you can eyeball the fit, and prints the exact ``play``
+    flags to copy once it looks right.
+    """
+    from .vision import GridRegion, annotate_board, detect_grid_region, save_image
+
+    client = WDAClient(base_url=args.wda)
+    win_w, win_h = client.window_size()
+    image = client.screenshot(save_path=args.out)
+    sh, sw = image.shape[:2]
+    scale = sw / win_w
+    print(f"Device logical size : {win_w} x {win_h} pts")
+    print(f"Screenshot size     : {sw} x {sh} px")
+    print(f"Scale factor        : {scale:.3f} px/pt (handled automatically)")
+    print(f"Saved screenshot    : {args.out}")
+
+    if args.region:
+        left, top, width, height = (int(v) for v in args.region.split(","))
+        region = GridRegion(left, top, width, height, args.rows, args.cols)
+    else:
+        try:
+            region = detect_grid_region(image, args.rows, args.cols)
+            print(
+                f"Auto-detected region: "
+                f"{region.left},{region.top},{region.width},{region.height}"
+            )
+        except Exception as exc:
+            print(f"\nCould not auto-detect the grid: {exc}")
+            print(f"Open {args.out}, read off the pixel box around the tiles, then re-run:")
+            print(
+                f"  python3 -m wordlink calibrate --wda {args.wda} "
+                f"--rows {args.rows} --cols {args.cols} --region LEFT,TOP,WIDTH,HEIGHT"
+            )
+            return 1
+
+    board = read_board_from_image(image, region)
+    print("\nBoard read from that region:")
+    print(board)
+
+    annotated = annotate_board(image, region, board)
+    save_image(args.annotated, annotated)
+    print(f"\nSaved annotated preview: {args.annotated}")
+    print("Open it and confirm the blue cell boxes sit on the tiles and the")
+    print("red letters are correct. If not, tweak --region / --rows / --cols.")
+    print("\nWhen it looks right, play with:")
+    print(
+        f"  python3 -m wordlink play --wda {args.wda} "
+        f"--rows {args.rows} --cols {args.cols} "
+        f"--region {region.left},{region.top},{region.width},{region.height}"
+    )
+    return 0
+
+
+def read_board_from_image(image, region):
+    from .vision import read_board
+
+    return read_board(image, region)
+
+
 def cmd_play(args) -> int:
     region = None
     if args.region:
@@ -177,6 +240,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_demo.add_argument("--top", type=int, default=15, help="Words to display.")
     p_demo.add_argument("--play", type=int, default=5, help="Words to show gestures for.")
     p_demo.set_defaults(func=cmd_demo)
+
+    p_cal = sub.add_parser(
+        "calibrate",
+        help="Screenshot the device and preview the grid region + OCR (for a new device/screen).",
+    )
+    p_cal.add_argument("--wda", default="http://localhost:8100", help="WDA base URL.")
+    p_cal.add_argument("--rows", type=int, default=4)
+    p_cal.add_argument("--cols", type=int, default=4)
+    p_cal.add_argument("--region", help="Grid pixel box 'left,top,width,height'. Omit to auto-detect.")
+    p_cal.add_argument("--out", default="calibration.png", help="Where to save the raw screenshot.")
+    p_cal.add_argument("--annotated", default="calibration_annotated.png",
+                       help="Where to save the annotated overlay preview.")
+    p_cal.set_defaults(func=cmd_calibrate)
 
     p_play = sub.add_parser("play", help="Play on a device via WebDriverAgent.")
     p_play.add_argument("--wda", default="http://localhost:8100", help="WDA base URL.")
