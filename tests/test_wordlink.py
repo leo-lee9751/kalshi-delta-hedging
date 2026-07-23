@@ -294,6 +294,18 @@ def test_select_word_strict_best_when_top_n_is_one():
     assert all(select_word(cands, rng, 1).word == "BEST" for _ in range(50))
 
 
+def test_cli_calibrate_args_parse():
+    from wordlink.cli import build_parser
+
+    args = build_parser().parse_args(
+        ["calibrate", "--rows", "5", "--cols", "5", "--region", "10,20,300,300"]
+    )
+    assert args.command == "calibrate"
+    assert args.rows == 5 and args.cols == 5
+    assert args.region == "10,20,300,300"
+    assert args.out.endswith(".png")
+
+
 def test_bundled_dictionary_finds_real_words():
     from wordlink.dictionary import load_trie
 

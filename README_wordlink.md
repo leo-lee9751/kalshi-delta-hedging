@@ -88,20 +88,37 @@ uses. You need a Mac (or Windows with the right tooling), Xcode, and your iPhone
    python3 -m wordlink play --rows 4 --cols 4 --round-seconds 80 --max-words 40
    ```
 
-### Getting the grid region right
+### Getting the grid region right (and calibrating a new device)
 
-OCR needs to know where the grid is. Auto-detection (`detect_grid_region`) finds
-the largest near-square shape, which works for the typical layout, but it is more
-reliable to pass the exact pixel box:
+OCR needs to know where the grid is. Different devices (iPhone vs iPad, or two
+different iPads) put the board at different pixel coordinates and sometimes use a
+different number of tiles, so you calibrate per device. Resolution itself is
+handled for you — WDA screenshots are in *device pixels* while gestures use
+*logical points*, and the bot computes the scale factor
+(`screenshot_width / window_size_width`) automatically.
+
+The easy way is the **`calibrate`** command. With the game on screen and WDA
+running, it screenshots the device, reads the board, and saves an annotated
+preview plus the exact `play` flags to copy:
 
 ```bash
-python3 -m wordlink play --region "LEFT,TOP,WIDTH,HEIGHT" --rows 4 --cols 4
+# Let it try to auto-detect the grid first
+python3 -m wordlink calibrate --wda http://localhost:8100 --rows 4 --cols 4
+
+# ...or pass a region you want to check
+python3 -m wordlink calibrate --rows 4 --cols 4 --region "LEFT,TOP,WIDTH,HEIGHT"
 ```
 
-Take a screenshot (`GET /screenshot`), open it in any image editor, and read off
-the pixel rectangle that bounds the tiles. Note WDA screenshots are in *device
-pixels* while gestures use *logical points*; the bot computes the scale factor
-(`screenshot_width / window_size_width`) automatically.
+It writes `calibration.png` (raw screenshot) and `calibration_annotated.png`
+(the region as a green box, each cell as a blue box, and the OCR'd letters in
+red). Open the annotated image: if the blue boxes sit on the tiles and the red
+letters are right, copy the printed `play` command. If not, tweak `--region`
+(and `--rows`/`--cols` — **count the tiles on your device**, it may not be 4×4)
+and re-run until it lines up.
+
+To find a region by hand instead: open `calibration.png` in any image editor and
+read off the pixel rectangle bounding the tiles, then pass it as
+`--region "LEFT,TOP,WIDTH,HEIGHT"`.
 
 ### Tuning speed vs. reliability
 
