@@ -145,8 +145,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dictionary",
         help="Path to a custom word list. Default is the bundled common-word list "
-        "(~45k words) for high acceptance; pass the full ENABLE1 list or your own "
-        "for maximum coverage.",
+        "(~18k everyday words) for high acceptance; pass the full ENABLE1 list "
+        "(wordlink/data/enable1.txt) or your own for maximum coverage.",
     )
     parser.add_argument(
         "--min-length", type=int, default=3, help="Minimum word length (default 3)."

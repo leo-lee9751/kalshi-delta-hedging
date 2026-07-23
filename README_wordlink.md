@@ -30,9 +30,16 @@ Four independent pieces (use as much or as little as you want):
 | `wordlink/automation.py` | Screenshot + replay a word as one finger drag via WebDriverAgent | `requests` |
 | `wordlink/bot.py` | Orchestrate capture → read → solve → play | all of the above |
 
-The dictionary is the public-domain **ENABLE1** lexicon (`wordlink/data/enable1.txt`,
-~172k words), the standard word list for this genre. Swap in your own with
-`--dictionary`.
+Two word lists ship with the bot, both derived from the public-domain **ENABLE1**
+lexicon (the standard list for this genre):
+
+- `wordlink/data/common.txt` (~18k everyday words) — the **default**. Dropping the
+  rare loanword / Scrabble-only tail (e.g. `SPORTIF`, `ROCOCO`) means far fewer
+  attempts are wasted on words Triumph's dictionary rejects.
+- `wordlink/data/enable1.txt` (~172k words) — maximal coverage. Pass it with
+  `--dictionary wordlink/data/enable1.txt` when you want every possible word.
+
+Swap in your own list with `--dictionary` at any time.
 
 ## Quick start (no device needed)
 
