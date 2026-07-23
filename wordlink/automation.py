@@ -93,6 +93,29 @@ class WDAClient:
     def _url(self, path: str) -> str:
         return f"{self.base_url.rstrip('/')}{path}"
 
+    def reset_session(self) -> None:
+        """Forget the cached session so the next call creates a fresh one.
+
+        Used to recover after a transient WDA/USB error.
+        """
+        self._session_id = None
+
+    def set_screenshot_quality(self, quality: int) -> None:
+        """Ask WDA to return compressed JPEG screenshots (much smaller/faster).
+
+        quality: 0 = original PNG (largest, slowest), 1 = medium JPEG,
+        2 = low JPEG. Best-effort; ignored if the WDA build doesn't support it.
+        """
+        try:
+            sid = self.session_id()
+            requests.post(
+                self._url(f"/session/{sid}/appium/settings"),
+                json={"settings": {"screenshotQuality": quality}},
+                timeout=self.timeout,
+            )
+        except Exception:
+            pass
+
     def status(self) -> dict:
         resp = requests.get(self._url("/status"), timeout=self.timeout)
         resp.raise_for_status()

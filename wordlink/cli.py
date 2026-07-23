@@ -122,6 +122,7 @@ def cmd_play(args) -> int:
         change_threshold=args.change_threshold,
         reshuffle_xy=reshuffle_xy,
         verbose=args.verbose,
+        screenshot_quality=args.screenshot_quality,
         timing=DragTiming(
             press_hold_ms=args.press_hold_ms,
             move_ms_per_tile=args.move_ms,
@@ -177,6 +178,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_play.add_argument("--move-ms", type=int, default=65, help="Drag time per tile (lower = faster).")
     p_play.add_argument("--tile-dwell-ms", type=int, default=50, help="Pause on each tile so it registers (raise if it misses tiles).")
     p_play.add_argument("--between-words-ms", type=int, default=20, help="Pause between words.")
+    p_play.add_argument("--screenshot-quality", type=int, default=1, choices=[0, 1, 2],
+                        help="WDA screenshot compression: 0=PNG (best/slowest), 1=JPEG, 2=low JPEG (fastest).")
     p_play.add_argument("--dry-run", action="store_true", help="Log gestures instead of sending them.")
     p_play.add_argument("--verbose", action="store_true", help="Also print rejected words.")
     p_play.set_defaults(func=cmd_play)

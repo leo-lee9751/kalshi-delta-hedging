@@ -47,6 +47,9 @@ class BotConfig:
     reshuffle_xy: Optional[Tuple[float, float]] = None
     reshuffle_pause: float = 1.0
     verbose: bool = False
+    # WDA screenshot compression: 0 = original PNG, 1 = medium JPEG (faster),
+    # 2 = low JPEG (fastest). JPEG is plenty for OCR and change detection.
+    screenshot_quality: Optional[int] = 1
 
 
 class WordLinkBot:
@@ -119,6 +122,8 @@ class WordLinkBot:
         win_w, _ = self.client.window_size()
         solver = self._get_solver()
         thresh = self.config.change_threshold
+        if self.config.screenshot_quality is not None:
+            self.client.set_screenshot_quality(self.config.screenshot_quality)
 
         image = self.client.screenshot()
         scale = image.shape[1] / win_w
@@ -135,61 +140,83 @@ class WordLinkBot:
         played = 0
         rejected = 0
         reshuffles = 0
+        errors = 0
         # Words Triumph refused, remembered for the whole session so we never
         # waste another attempt on them (a word it rejects once won't appear in
         # its dictionary on any later board either).
         rejected_words: set[str] = self._rejected_words
 
         while deadline is None or time.monotonic() < deadline:
-            solutions = [s for s in solver.solve(board) if s.word not in rejected_words]
+            try:
+                solutions = [s for s in solver.solve(board) if s.word not in rejected_words]
 
-            if not solutions:
-                # Recovery: maybe the board changed and our copy is stale.
-                image = self.client.screenshot()
-                if self._regions_differ(prev_crop, self._region_crop(image, region), thresh):
-                    board = self._read_board(image, region)
-                    prev_crop = self._region_crop(image, region)
-                    continue
-                if reshuffles < rounds - 1 and self._reshuffle(scale):
-                    reshuffles += 1
+                if not solutions:
+                    # Recovery: maybe the board changed and our copy is stale.
                     image = self.client.screenshot()
-                    region = self._region_for(image)
+                    if self._regions_differ(prev_crop, self._region_crop(image, region), thresh):
+                        board = self._read_board(image, region)
+                        prev_crop = self._region_crop(image, region)
+                        continue
+                    if reshuffles < rounds - 1 and self._reshuffle(scale):
+                        reshuffles += 1
+                        image = self.client.screenshot()
+                        region = self._region_for(image)
+                        board = self._read_board(image, region)
+                        prev_crop = self._region_crop(image, region)
+                        print(f"Reshuffled ({reshuffles}). New board:\n{board}")
+                        continue
+                    print("No playable words left; stopping.")
+                    break
+
+                sol = solutions[0]
+                self._play_word(sol, region, scale)
+
+                # Quick check: rejected words don't animate, so if nothing changed
+                # after a short delay, move on immediately (no full settle wait).
+                time.sleep(self.config.quick_check)
+                image = self.client.screenshot()
+                crop = self._region_crop(image, region)
+                if not self._regions_differ(prev_crop, crop, thresh):
+                    rejected += 1
+                    rejected_words.add(sol.word)
+                    if self.config.verbose:
+                        print(f"  x {sol.word} (rejected)")
+                    errors = 0
+                    continue
+
+                # Something changed — let the refill finish, then confirm via letters.
+                time.sleep(self.config.settle_after_word)
+                image = self.client.screenshot()
+                new_board = self._read_board(image, region)
+                prev_crop = self._region_crop(image, region)
+                if new_board.grid != board.grid:
+                    played += 1
+                    board = new_board
+                    print(f"[{played}] {sol.word} (+{sol.score})")
+                else:
+                    # Pixels flickered but letters are unchanged: it was rejected.
+                    rejected += 1
+                    rejected_words.add(sol.word)
+                    if self.config.verbose:
+                        print(f"  x {sol.word} (rejected)")
+                errors = 0
+
+            except Exception as exc:  # transient WDA / USB / session hiccup
+                errors += 1
+                print(f"warning: {type(exc).__name__}: {exc} (retry {errors}/8)")
+                if errors >= 8:
+                    print("Too many consecutive errors; stopping.")
+                    break
+                self.client.reset_session()
+                time.sleep(min(0.3 * (2 ** errors), 3.0))
+                try:  # re-sync with whatever is currently on screen
+                    if self.config.screenshot_quality is not None:
+                        self.client.set_screenshot_quality(self.config.screenshot_quality)
+                    image = self.client.screenshot()
+                    region = self.config.region or self._region_for(image)
                     board = self._read_board(image, region)
                     prev_crop = self._region_crop(image, region)
-                    print(f"Reshuffled ({reshuffles}). New board:\n{board}")
-                    continue
-                print("No playable words left; stopping.")
-                break
-
-            sol = solutions[0]
-            self._play_word(sol, region, scale)
-
-            # Quick check: rejected words don't animate, so if nothing changed
-            # after a short delay, move on immediately (no full settle wait).
-            time.sleep(self.config.quick_check)
-            image = self.client.screenshot()
-            crop = self._region_crop(image, region)
-            if not self._regions_differ(prev_crop, crop, thresh):
-                rejected += 1
-                rejected_words.add(sol.word)
-                if self.config.verbose:
-                    print(f"  x {sol.word} (rejected)")
-                continue
-
-            # Something changed — let the refill finish, then confirm via letters.
-            time.sleep(self.config.settle_after_word)
-            image = self.client.screenshot()
-            new_board = self._read_board(image, region)
-            prev_crop = self._region_crop(image, region)
-            if new_board.grid != board.grid:
-                played += 1
-                board = new_board
-                print(f"[{played}] {sol.word} (+{sol.score})")
-            else:
-                # Pixels flickered but letters are unchanged: it was rejected.
-                rejected += 1
-                rejected_words.add(sol.word)
-                if self.config.verbose:
-                    print(f"  x {sol.word} (rejected)")
+                except Exception:
+                    pass
 
         print(f"Done. accepted={played} rejected={rejected} reshuffles={reshuffles}")
