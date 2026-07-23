@@ -1,0 +1,13 @@
+# Core solver + CLI need only the standard library (and `requests`, already a
+# top-level dependency of this repo) — nothing here is required to solve boards
+# or to run the test suite / dry-run gesture planning.
+
+# --- Optional: screen capture + on-device automation (the `play` command) ---
+requests>=2.31.0          # WebDriverAgent HTTP client (already in requirements.txt)
+
+# --- Optional: board OCR from screenshots (the `vision` module) ---
+opencv-python>=4.8.0      # image cropping / preprocessing
+numpy>=1.24.0             # image arrays (already in requirements.txt)
+pytesseract>=0.3.10       # letter recognition; also needs the `tesseract` binary
+                          #   macOS:  brew install tesseract
+                          #   Ubuntu: sudo apt-get install tesseract-ocr
