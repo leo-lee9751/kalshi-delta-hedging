@@ -15,7 +15,15 @@ from typing import Iterable, List, Optional, Set
 
 from .trie import Trie
 
-BUNDLED_DICTIONARY = os.path.join(os.path.dirname(__file__), "data", "enable1.txt")
+_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+# Full ENABLE1 lexicon (~172k words) — maximal coverage, but includes many
+# obscure words that games like Triumph's WordLink reject.
+FULL_DICTIONARY = os.path.join(_DATA_DIR, "enable1.txt")
+# Frequency-filtered subset (~45k of the most common ENABLE1 words). This is the
+# default for actually *playing*: far fewer attempted words get rejected, so the
+# bot wastes less time and clears more accepted words within the round timer.
+COMMON_DICTIONARY = os.path.join(_DATA_DIR, "common.txt")
+BUNDLED_DICTIONARY = COMMON_DICTIONARY
 
 
 def load_words(
